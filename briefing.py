@@ -1,8 +1,10 @@
+6c
 from __future__ import annotations
 
 import argparse
 import hashlib
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -15,6 +17,43 @@ DEFAULT_MODEL_ID = "eleven_flash_v2_5"
 DEFAULT_MAX_CHARS = 500
 CACHE_DIR = Path("audio_cache")
 
+
+def build_cache_key(text: str, voice_id: str, model_id: str) -> str:
+  payload = f"{model_id}:{voice_id}:{text}".encode("utf-8")
+  return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def clean_for_speech(text: str) -> str:
+  # Convert Markdown links [label](url) -> label, and drop raw URLs
+  text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
+  text = re.sub(r"https?://\S+", "", text)
+  # Strip inline code backticks, headings, emphasis markers, and leading bullets
+  text = re.sub(r"`+", "", text)
+  text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
+  text = re.sub(r"(\*\*|__|\*|_)", "", text)
+  text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.MULTILINE)
+  # Collapse extra whitespace/newlines into smooth spoken spacing
+  text = re.sub(r"\s+", " ", text).strip()
+  return text
+
+
+def load_briefing_text(args: argparse.Namespace) -> str:
+  if args.file:
+    path = Path(args.file)
+    if not path.exists():
+      raise FileNotFoundError(f"Briefing file not found: {path}")
+    text = path.read_text(encoding="utf-8").strip()
+  elif args.text:
+    text = args.text.strip()
+  elif not sys.stdin.isatty():
+    text = sys.stdin.read().strip()
+  else:
+    raise ValueError("Provide briefing text via --text, --file, or piped stdin.")
+
+  text = clean_for_speech(text)
+  if not text:
+    raise ValueError("Briefing text is empty.")
+  return text
 
 def build_cache_key(text: str, voice_id: str, model_id: str) -> str:
     payload = f"{model_id}:{voice_id}:{text}".encode("utf-8")
