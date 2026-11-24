@@ -110,17 +110,27 @@ def synthesize_briefing(
     if client is None:
         raise EnvironmentError("ElevenLabs client is not initialized.")
 
-    audio_chunks = client.text_to_speech.convert(
-        text=text,
-        voice_id=voice_id,
-        model_id=model_id,
-        output_format="mp3_44100_128",
-    )
+    try:
+        audio_chunks = client.text_to_speech.convert(
+            text=text,
+            voice_id=voice_id,
+            model_id=model_id,
+            output_format="mp3_44100_128",
+        )
 
-    with open(output_path, "wb") as f:
-        for chunk in audio_chunks:
-            if isinstance(chunk, bytes):
-                f.write(chunk)
+        with open(output_path, "wb") as f:
+            for chunk in audio_chunks:
+                if isinstance(chunk, bytes):
+                    f.write(chunk)
+    except Exception:
+        output_path.unlink(missing_ok=True)
+        raise
+
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"ElevenLabs returned empty audio for {output_path.name}."
+        )
 
     print(f"Generated ({char_count} chars): {output_path}")
     return output_path
